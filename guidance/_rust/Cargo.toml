@@ -1,0 +1,11 @@
+[package]
+name = "guidancerust"
+version = "0.1.0"
+edition = "2018"
+
+[lib]
+name = "guidancerust"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.15", features = ["extension-module"] }
