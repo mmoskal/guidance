@@ -16,6 +16,7 @@ node_modules
 guidance/*.so
 guidance/_rust/target/
 guidance/_rust/Cargo.lock
+guidance/_rust/*.cpython-310*
 *.pyd
 
 notebooks/**/*.papermill_out.ipynb

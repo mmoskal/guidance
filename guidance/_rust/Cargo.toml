@@ -1,11 +1,15 @@
 [package]
 name = "guidancerust"
 version = "0.1.0"
-edition = "2018"
+edition = "2021"
 
 [lib]
 name = "guidancerust"
 crate-type = ["cdylib"]
 
 [dependencies]
-pyo3 = { version = "0.15", features = ["extension-module"] }
+pyo3 = { version = "0.21.1", features = ["extension-module"] }
+aici_abi = { path = "../../../../controllers/aici_abi" }
+aici_native = { path = "../../../../controllers/aici_native" }
+aici_guidance_ctrl = { path = "../../../../controllers/guidance_ctrl" }
+anyhow = "1.0.81"
