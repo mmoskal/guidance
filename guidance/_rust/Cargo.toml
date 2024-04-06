@@ -13,3 +13,5 @@ aici_abi = { path = "../../../../controllers/aici_abi" }
 aici_native = { path = "../../../../controllers/aici_native" }
 aici_guidance_ctrl = { path = "../../../../controllers/guidance_ctrl" }
 anyhow = "1.0.81"
+serde_json = "1.0.108"
+serde = { version = "1.0.193", features = ["derive"] }
