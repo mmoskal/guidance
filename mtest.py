@@ -1,6 +1,7 @@
 from guidance._rust.guidancerust import engine_start, Engine, TokenMask
 from guidance import select, capture, gen
 from dataclasses import dataclass, field
+from typing import Tuple, List, Optional, Dict
 import json
 
 
@@ -8,25 +9,30 @@ import json
 class Splice:
     # If one of the tokens in when_sampled is sampled, this sequence is appended.
     # When empty, this sequence is appended unconditionally, regardless of sampling.
-    ff_tokens: list[int]
+    ff_tokens: List[int]
     # Backtrack this much before appending this sequence (this includes sampled token if any).
-    when_sampled: list[int]
+    when_sampled: List[int]
     # Append these tokens after backtracking.
     backtrack: int
 
 
 @dataclass
 class Branch:
-    mask: TokenMask | None = None
-    splices: list[Splice] = field(default_factory=list)
+    mask: Optional[TokenMask] = None
+    splices: List[Splice] = field(default_factory=list)
+
+    def is_splice(self) -> bool:
+        return len(self.splices) == 1 and self.splices[0].when_sampled == []
 
 
 class Engine2:
     def __init__(self, tokenizer_name, grammar):
         self.engine = Engine(tokenizer_name, grammar.serialize())
+        self.captures: List[Tuple[str, bytes]] = []
 
-    def process(self, backtrack: int, tokens: list[int]):
-        token_sets, res_str = self.engine.mid_process(backtrack, tokens)
+    def process(self, backtrack: int, tokens: List[int]) -> Branch:
+        captures, token_sets, res_str = self.engine.mid_process(backtrack, tokens)
+        self.captures += captures
         r = json.loads(res_str)
         if len(r["branches"]) == 0:
             return None  # stop
@@ -62,6 +68,15 @@ def main():
     tokens = r0.splices[0].ff_tokens
     r1 = e.process(0, tokens)
     print(r1)
+    toks = e.engine.tokenize(">Foo bar</joke>")
+    for t in toks:
+        r = e.process(0, [t])
+        print(r)
+        while r.is_splice():
+            print("SPLICE")
+            r = e.process(r.splices[0].backtrack, r.splices[0].ff_tokens)
+            print(r)
+    print(e.captures)
 
     # s = engine_start("fo", "bar", False)
     # print(s)
