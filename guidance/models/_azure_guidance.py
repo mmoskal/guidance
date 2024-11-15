@@ -47,15 +47,36 @@ class AzureGuidanceEngine(Engine):
         # this is a hack to avoid loops
         serialized["grammar"]["max_tokens"] = self.max_streaming_tokens
         # print(json.dumps(serialized))
-        data = {
-            "controller": "llguidance",
-            "controller_arg": serialized,
-            "prompt": parser,
-            "max_tokens": self.max_streaming_tokens,
-            "temperature": 0.0,  # this is just default temperature
-        }
+        url, headers, info, is_chat = _mk_url("run", conn_str=self.conn_str)
 
-        url, headers, info = _mk_url("run", conn_str=self.conn_str)
+        if is_chat:
+            data = {
+                "model": "",
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": parser,
+                    }
+                ],
+                "response_format": {
+                    "type": "llguidance",
+                    **serialized,
+                },
+                "stream": True,
+                "llguidance": serialized["grammar"],
+                "llg_log_level": "verbose",
+                "max_tokens": self.max_streaming_tokens,
+                "temperature": 0.0,  # this is just default temperature
+            }
+        else:
+            data = {
+                "controller": "llguidance",
+                "controller_arg": serialized,
+                "prompt": parser,
+                "max_tokens": self.max_streaming_tokens,
+                "temperature": 0.0,  # this is just default temperature
+            }
+
         if self.log_level >= 4:
             print(f"POST {info}", flush=True)
         if self.log_level >= 5:
@@ -80,16 +101,23 @@ class AzureGuidanceEngine(Engine):
                 continue
             decoded_line: str = line.decode("utf-8")
             if decoded_line.startswith("data: {"):
-                d = json.loads(decoded_line[6:])
-                if "forks" not in d:
+                d: dict = json.loads(decoded_line[6:])
+                is_chat = False
+                logs_key = "logs"
+                forks_key = "forks"
+                if d.get("object") == "text_completion":
+                    logs_key = "llg_logs"
+                    forks_key = "choices"
+                    is_chat = True
+                if forks_key not in d:
                     continue
-                for ch in d["forks"]:
-                    if "Previous WASM Error" in ch["logs"]:
+                for ch in d[forks_key]:
+                    if "Previous WASM Error" in ch[logs_key]:
                         raise RuntimeError("Previous WASM Error.")
                     idx = ch["index"]
                     assert idx == 0, "unexpected index in response from server"
                     progress = []
-                    for ln in ch["logs"].split("\n"):
+                    for ln in ch[logs_key].split("\n"):
                         ln: str
                         if ln.startswith("JSON-OUT: "):
                             j = json.loads(ln[10:])
@@ -103,7 +131,7 @@ class AzureGuidanceEngine(Engine):
                     progress = LLProgress.model_validate(progress)
 
                     if self.log_level >= 2:
-                        print(ch["logs"].rstrip("\n"), flush=True)
+                        print(ch[logs_key].rstrip("\n"), flush=True)
 
                     err = ch.get("error", "")
                     if err:
@@ -112,8 +140,12 @@ class AzureGuidanceEngine(Engine):
                     # TODO: these metrics may be a little off -- notice the `-1` (which is a hack for passing
                     # tests in tests/model_integration/library/test_gen.py for now, may have to do with BOS?)
                     usage = d["usage"]
-                    self.metrics.engine_input_tokens = usage["ff_tokens"]
-                    self.metrics.engine_output_tokens = usage["sampled_tokens"] - 1
+                    if is_chat:
+                        self.metrics.engine_input_tokens = usage["prompt_tokens"]
+                        self.metrics.engine_output_tokens = usage["completion_tokens"]
+                    else:
+                        self.metrics.engine_input_tokens = usage["ff_tokens"]
+                        self.metrics.engine_output_tokens = usage["sampled_tokens"] - 1
 
                     yield progress.to_engine_call_response()
 
@@ -153,13 +185,18 @@ def _mk_url(path: str, conn_str: str):
             headers = {"authorization": "Bearer " + key}
             info = f"authorization: Bearer {key[0:2]}...{key[-2:]}"
     url = urllib.parse.urlunparse(p._replace(fragment="", query=""))
+    is_chat = False
     if url.endswith("/"):
         url = url[:-1]
     if url.endswith("/run"):
         url = url[:-4] + "/" + path
     elif url.endswith("/guidance") and path == "run":
         url = url
+    elif url.endswith("/chat/completions") and path == "run":
+        headers["extra-parameters"] = "pass-through"
+        url = url
+        is_chat = True
     else:
         url = url + "/" + path
     info = f"{url} ({info})"
-    return url, headers, info
+    return url, headers, info, is_chat
