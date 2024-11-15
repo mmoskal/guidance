@@ -58,10 +58,10 @@ class AzureGuidanceEngine(Engine):
                         "content": parser,
                     }
                 ],
-                "response_format": {
-                    "type": "llguidance",
-                    **serialized,
-                },
+                # "response_format": {
+                #     "type": "llguidance",
+                #     **serialized,
+                # },
                 "stream": True,
                 "llguidance": serialized["grammar"],
                 "llg_log_level": "verbose",
@@ -100,12 +100,13 @@ class AzureGuidanceEngine(Engine):
             if not line:
                 continue
             decoded_line: str = line.decode("utf-8")
+            # print(decoded_line, flush=True)
             if decoded_line.startswith("data: {"):
                 d: dict = json.loads(decoded_line[6:])
                 is_chat = False
                 logs_key = "logs"
                 forks_key = "forks"
-                if d.get("object") == "text_completion":
+                if d.get("object", "") in ["text_completion", "chat.completion.chunk"]:
                     logs_key = "llg_logs"
                     forks_key = "choices"
                     is_chat = True
